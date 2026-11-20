@@ -1,6 +1,6 @@
 import { planAllows } from "@jobpilot/shared";
 import { eq } from "drizzle-orm";
-import webpush from "web-push";
+import * as webpush from "web-push";
 import { config } from "../config";
 import { db, schema } from "../db";
 import { httpFetch } from "../lib/http";
