@@ -4,8 +4,15 @@ import { z } from "zod";
 import { hashPassword, me, requireAuth, SESSION_COOKIE, setSessionCookie, signSession, verifyPassword } from "../auth";
 import { db, schema } from "../db";
 import { badRequest, HttpError } from "../lib/errors";
+import { rateLimit } from "../lib/rateLimit";
 
 export const authRouter = Router();
+
+const authLimit = rateLimit({
+  windowMs: 15 * 60_000,
+  max: process.env.NODE_ENV === "test" ? 1000 : 20,
+  key: (req) => `${req.ip}|${String(req.body?.email ?? "").toLowerCase()}`,
+});
 
 const Signup = z.object({
   name: z.string().min(1).max(100),
@@ -33,7 +40,7 @@ export function publicUser(u: typeof schema.users.$inferSelect) {
   return rest;
 }
 
-authRouter.post("/signup", async (req, res) => {
+authRouter.post("/signup", authLimit, async (req, res) => {
   const body = Signup.parse(req.body);
   const email = body.email.toLowerCase();
   const [exists] = await db.select({ id: schema.users.id }).from(schema.users).where(eq(schema.users.email, email));
@@ -63,7 +70,7 @@ authRouter.post("/signup", async (req, res) => {
   res.status(201).json({ user: publicUser(user), token });
 });
 
-authRouter.post("/login", async (req, res) => {
+authRouter.post("/login", authLimit, async (req, res) => {
   const body = z.object({ email: z.string().email(), password: z.string() }).parse(req.body);
   const [user] = await db.select().from(schema.users).where(eq(schema.users.email, body.email.toLowerCase()));
   if (!user || !(await verifyPassword(body.password, user.passwordHash))) throw new HttpError(401, "Wrong email or password");

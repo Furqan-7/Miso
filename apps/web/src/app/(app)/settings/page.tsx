@@ -105,7 +105,13 @@ function SettingsInner() {
               <Button type="submit" loading={busy === "profile"}>Save profile</Button>
               <label className="inline-flex h-10 cursor-pointer items-center rounded-lg border border-border px-4 text-sm font-medium hover:bg-surface-2">
                 Re-upload resume
-                <input type="file" accept=".pdf,application/pdf" className="sr-only" onChange={(e) => { const f = e.target.files?.[0]; if (f) void act("resume", async () => { const fd = new FormData(); fd.append("file", f); await api("/profile/resume", { method: "POST", body: fd }); await reload(); location.reload(); }, "Resume parsed"); }} />
+                <input type="file" accept=".pdf,application/pdf" className="sr-only" onChange={(e) => { const f = e.target.files?.[0]; if (f) void act("resume", async () => {
+                  const fd = new FormData();
+                  fd.append("file", f);
+                  const r = await api<{ profile: { skills: string[]; headline: string | null } }>("/profile/resume", { method: "POST", body: fd });
+                  setP((cur) => ({ ...cur, skills: r.profile.skills, headline: r.profile.headline ?? cur.headline }));
+                  await reload();
+                }, "Resume parsed: skills and projects updated"); }} />
               </label>
             </div>
           </form>

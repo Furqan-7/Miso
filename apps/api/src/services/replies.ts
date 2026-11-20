@@ -8,7 +8,7 @@ import { logger } from "../lib/logger";
 import type { EmailAccount, InboundMessage } from "./mail/providers";
 import { notify } from "./notify";
 import { advanceStage, logEvent, stopSequence } from "./sequencer";
-import { suggestReply } from "./writer";
+import { resumeLink, suggestReply } from "./writer";
 
 const ClassifySchema = z.object({
   category: z.enum(REPLY_CATEGORIES),
@@ -104,7 +104,7 @@ export async function ingestInbound(account: EmailAccount, msg: InboundMessage) 
     senderName: user.name,
     recipientFirstName: contact?.name.split(" ")[0] ?? "",
     bookingLink: config.CAL_COM_LINK,
-    resumeUrl: profile?.resumeUrl ?? (user.publicSlug ? `${config.APP_URL}/p/${user.publicSlug}` : undefined),
+    resumeUrl: profile ? resumeLink(user, profile) : undefined,
   });
   const [reply] = await db
     .insert(schema.replies)

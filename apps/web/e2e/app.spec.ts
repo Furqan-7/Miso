@@ -123,3 +123,48 @@ test("phone layout: no horizontal scroll, menu opens", async ({ browser }) => {
   await shot(page, "18-mobile-menu");
   await page.close();
 });
+
+test("tracker: moving a card to Interview builds the prep pack", async ({ page }) => {
+  await loginDemo(page);
+  const company = `E2E Corp ${Date.now()}`;
+  const created = await page.request.post("/api/crm/applications", { data: { company, roleTitle: "Frontend Intern", stage: "found" } });
+  expect(created.status()).toBe(201);
+  await page.goto("/tracker");
+  const mover = page.getByRole("combobox", { name: `Move ${company}` });
+  await expect(mover).toBeVisible();
+  await mover.selectOption("interview");
+  await expect(page.getByText("Interview prep pack is ready")).toBeVisible();
+  await page.getByRole("region", { name: "Interview" }).getByRole("link", { name: new RegExp(company) }).click();
+  await page.getByRole("tab", { name: "Interview prep" }).click();
+  await expect(page.getByText("Likely questions")).toBeVisible();
+  await expect(page.getByText("Negotiation")).toBeVisible();
+  await shot(page, "19-prep-pack");
+});
+
+test("free plan: campaign builder explains bulk campaigns need Pro", async ({ page }) => {
+  await loginDemo(page);
+  await page.goto("/campaigns/new");
+  await expect(page.getByText(/Bulk campaigns are a Pro feature/)).toBeVisible();
+  await expect(page.getByRole("option", { name: /Autopilot.*\(Pro\)/ })).toBeDisabled();
+});
+
+test("deliverability: run SPF/DKIM/DMARC checks", async ({ page }) => {
+  await loginDemo(page);
+  await page.goto("/deliverability");
+  await page.getByRole("button", { name: "Run checks" }).click();
+  await expect(page.getByText("DNS records checked")).toBeVisible();
+  await expect(page.getByText("Inbox health")).toBeVisible();
+  await shot(page, "20-deliverability-checked");
+});
+
+test("uploading a PDF resume keeps you signed in (pdf.js base64 regression)", async ({ page }) => {
+  const { makePdf } = await import("../../api/test/pdf");
+  await loginDemo(page);
+  await page.goto("/settings");
+  await page.locator('input[type="file"]').setInputFiles({ name: "resume.pdf", mimeType: "application/pdf", buffer: makePdf(["Asha Verma", "SKILLS", "TypeScript, Next.js, PostgreSQL, Redis"]) });
+  await expect(page.getByText("Resume parsed")).toBeVisible();
+  await page.goto("/jobs");
+  await expect(page.getByRole("heading", { name: "Jobs" })).toBeVisible();
+  const me = await page.request.get("/api/auth/me");
+  expect(me.status()).toBe(200);
+});

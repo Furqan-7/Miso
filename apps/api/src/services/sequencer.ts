@@ -14,6 +14,7 @@ import { and, asc, desc, eq, gte, ilike, inArray, isNull, lte, ne, or, sql } fro
 import { config } from "../config";
 import { db, schema } from "../db";
 import { randomToken } from "../lib/crypto";
+import { readResume } from "../lib/storage";
 import { badRequest, forbidden, notFound } from "../lib/errors";
 import { logger } from "../lib/logger";
 import { ProviderError, sendEmail, type EmailAccount } from "./mail/providers";
@@ -116,7 +117,8 @@ export async function draftEmail(
   const [job] = input.jobId ? await db.select().from(schema.jobs).where(eq(schema.jobs.id, input.jobId)) : [];
   const app = await upsertApplication({ userId: user.id, companyId: contact.companyId, jobId: input.jobId, contactId: contact.id, campaignId: input.campaignId, roleTitle: job?.title });
   const tone = input.tone ?? "casual";
-  const ctx = await loadEmailContext(user.id, contact.id, { jobId: input.jobId, tone, step: input.step ?? 0 });
+  const [campaign] = input.campaignId ? await db.select({ includeResume: schema.campaigns.includeResume }).from(schema.campaigns).where(eq(schema.campaigns.id, input.campaignId)) : [];
+  const ctx = await loadEmailContext(user.id, contact.id, { jobId: input.jobId, tone, step: input.step ?? 0, includeLink: campaign?.includeResume ?? true });
   const gen = await generateEmail(user, ctx);
   const subject = input.variant === "B" && gen.subjects[1] ? gen.subjects[1] : gen.subject;
   const account = input.emailAccountId ? null : await defaultAccount(user.id);
@@ -174,7 +176,9 @@ export async function approveMessage(user: User, messageId: string, edits: { sub
     const [u] = await db.update(schema.messages).set({ status: "scheduled", scheduledAt: new Date() }).where(eq(schema.messages.id, msg.id)).returning();
     return u;
   }
-  return scheduleMessage(msg.id);
+  // Follow-ups keep their day-3/7/14 slot; approving early must not send them early.
+  const notBefore = msg.scheduledAt && msg.scheduledAt > new Date() ? msg.scheduledAt : new Date();
+  return scheduleMessage(msg.id, { notBefore });
 }
 
 /** Cancel queued follow-ups for an application (used when they reply). */
@@ -293,6 +297,11 @@ async function queueNextFollowup(sent: Message) {
   if (!campaign) return null;
   const nextStep = campaign.sequence[sent.step + 1];
   if (!nextStep) return null;
+  const replied = await db
+    .select({ id: schema.replies.id })
+    .from(schema.replies)
+    .where(and(eq(schema.replies.applicationId, sent.applicationId), ne(schema.replies.category, "out_of_office")));
+  if (replied.length) return null;
   const [initial] = await db.select().from(schema.messages).where(and(eq(schema.messages.applicationId, sent.applicationId), eq(schema.messages.step, 0), eq(schema.messages.status, "sent")));
   const base = initial?.sentAt ?? sent.sentAt ?? new Date();
   const [user] = await db.select().from(schema.users).where(eq(schema.users.id, sent.userId));
@@ -323,6 +332,13 @@ export async function sentTodayCount(accountId: string, now = new Date()) {
     .from(schema.messages)
     .where(and(eq(schema.messages.emailAccountId, accountId), gte(schema.messages.sentAt, start)));
   return r?.c ?? 0;
+}
+
+/** Resume PDF, only on messages flagged for it (e.g. answering "can you send your resume?"). */
+async function attachmentsFor(msg: Message, userName: string) {
+  if (!msg.attachResume) return undefined;
+  const pdf = await readResume(msg.userId);
+  return pdf ? [{ filename: `${userName.replace(/[^\w ]+/g, "").trim().replace(/\s+/g, "_") || "resume"}_Resume.pdf`, contentType: "application/pdf", content: pdf }] : undefined;
 }
 
 async function lastSentAt(accountId: string): Promise<number | undefined> {
@@ -368,9 +384,13 @@ export async function dispatchDue(now = new Date(), opts: { minGapSeconds?: numb
       report.failed++;
       continue;
     }
-    // A reply arrived since scheduling → stop.
+    // A reply arrived after this message was queued → stop the sequence. (Messages written after the
+    // reply, such as your own response from the inbox, are not affected.)
     if (msg.applicationId) {
-      const [r] = await db.select({ id: schema.replies.id }).from(schema.replies).where(and(eq(schema.replies.applicationId, msg.applicationId), ne(schema.replies.category, "out_of_office")));
+      const [r] = await db
+        .select({ id: schema.replies.id })
+        .from(schema.replies)
+        .where(and(eq(schema.replies.applicationId, msg.applicationId), ne(schema.replies.category, "out_of_office"), gte(schema.replies.receivedAt, msg.createdAt)));
       if (r) {
         report.cancelled += await stopSequence(msg.applicationId, "reply received");
         continue;
@@ -428,9 +448,11 @@ export async function dispatchDue(now = new Date(), opts: { minGapSeconds?: numb
           messageId: rfcId,
           inReplyTo: previous.at(-1)?.rfcMessageId ?? null,
           references: previous.map((p) => p.rfcMessageId).filter(Boolean) as string[],
-          headers: { "List-Unsubscribe": `<${config.API_URL}/api/t/u/${msg.trackingId}>`, "X-JobPilot-Id": msg.trackingId },
+          headers: { "List-Unsubscribe": `<${config.API_URL}/api/t/u/${msg.trackingId}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click", "X-JobPilot-Id": msg.trackingId },
+          attachments: await attachmentsFor(msg, user.name),
         },
         msg.providerThreadId ?? previous.at(-1)?.providerThreadId,
+        previous.at(-1)?.providerMessageId,
       );
       const sentAt = new Date();
       const [sent] = await db

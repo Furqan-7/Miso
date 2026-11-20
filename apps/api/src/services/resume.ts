@@ -1,3 +1,4 @@
+import "../lib/polyfills"; // must load before pdf.js (see file)
 import { normalizeSkills, parseResumeText, type ParsedResume } from "@jobpilot/shared";
 import { z } from "zod";
 import { aiStructured, pdfBlock } from "../ai/claude";

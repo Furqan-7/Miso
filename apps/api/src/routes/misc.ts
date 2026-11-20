@@ -1,5 +1,3 @@
-import { readFile } from "node:fs/promises";
-import path from "node:path";
 import { PLAN_LIMITS, PLANS, rankProjects } from "@jobpilot/shared";
 import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { Router, type Request, type Response } from "express";
@@ -17,7 +15,7 @@ import { detectAts } from "../services/discovery/sources";
 import { addContact, findPeople } from "../services/people";
 import { usageSummary } from "../services/usage";
 import { generateEmail, loadEmailContext } from "../services/writer";
-import { UPLOAD_DIR } from "./profile";
+import { readResume } from "../lib/storage";
 
 // ---------------------------------------------------------------- analytics
 export const analyticsRouter = Router();
@@ -171,12 +169,9 @@ export async function publicResume(req: Request, res: Response) {
   const [user] = await db.select().from(schema.users).where(eq(schema.users.publicSlug, slug));
   const [p] = user ? await db.select().from(schema.profiles).where(eq(schema.profiles.userId, user.id)) : [];
   if (!user || !p?.publicVisible) throw notFound("Not found");
-  try {
-    const buf = await readFile(path.join(UPLOAD_DIR, `${user.id}.pdf`));
-    res.set({ "content-type": "application/pdf", "content-disposition": `inline; filename="${slug}-resume.pdf"` }).send(buf);
-  } catch {
-    throw notFound("No resume uploaded");
-  }
+  const buf = await readResume(user.id);
+  if (!buf) throw notFound("No resume uploaded");
+  res.set({ "content-type": "application/pdf", "content-disposition": `inline; filename="${slug}-resume.pdf"` }).send(buf);
 }
 
 // ---------------------------------------------------------------- Chrome extension

@@ -1,19 +1,29 @@
 import "dotenv/config";
 import { z } from "zod";
 
+/** "true"/"1"/"yes" → true, "false"/"0"/"no"/"" → false (z.coerce.boolean treats "false" as true). */
+const bool = (def: boolean) =>
+  z
+    .string()
+    .optional()
+    .transform((v) => (v === undefined || v.trim() === "" ? def : ["true", "1", "yes", "on"].includes(v.trim().toLowerCase())));
+
+const DEFAULT_JWT = "dev-secret-change-me-please-32chars";
+const DEFAULT_ENC = "dev-encryption-key-change-me-32bytes!";
+
 const Env = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   PORT: z.coerce.number().default(4000),
   DATABASE_URL: z.string().default("postgres://postgres:postgres@localhost:5432/jobpilot"),
   REDIS_URL: z.string().default("redis://localhost:6379"),
-  JWT_SECRET: z.string().min(16).default("dev-secret-change-me-please-32chars"),
-  ENCRYPTION_KEY: z.string().default("dev-encryption-key-change-me-32bytes!"),
+  JWT_SECRET: z.string().min(16).default(DEFAULT_JWT),
+  ENCRYPTION_KEY: z.string().min(16).default(DEFAULT_ENC),
   APP_URL: z.string().default("http://localhost:3000"),
   API_URL: z.string().default("http://localhost:4000"),
 
   ANTHROPIC_API_KEY: z.string().optional(),
   ANTHROPIC_MODEL: z.string().default("claude-opus-5-5"),
-  AI_DISABLED: z.coerce.boolean().default(false),
+  AI_DISABLED: bool(false),
 
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
@@ -38,13 +48,17 @@ const Env = z.object({
 
   CAL_COM_LINK: z.string().optional(),
   SMTP_VERIFY_FROM: z.string().default("verify@example.com"),
-  SMTP_VERIFY_ENABLED: z.coerce.boolean().default(true),
+  SMTP_VERIFY_ENABLED: bool(true),
   DISCOVERY_COMPANIES: z.string().optional(), // comma list like greenhouse:stripe,lever:netflix
-  OFFLINE: z.coerce.boolean().default(false), // skip all outbound network calls (tests)
-  RUN_SCHEDULER_INLINE: z.coerce.boolean().default(false), // run ticks in the API process when no worker
+  OFFLINE: bool(false), // skip all outbound network calls (tests)
+  RUN_SCHEDULER_INLINE: bool(false), // run ticks in the API process when no worker
 });
 
 export const config = Env.parse(process.env);
+
+if (config.NODE_ENV === "production" && (config.JWT_SECRET === DEFAULT_JWT || config.ENCRYPTION_KEY === DEFAULT_ENC)) {
+  throw new Error("Set JWT_SECRET and ENCRYPTION_KEY to your own random values before running in production");
+}
 export type Config = typeof config;
 
 export const aiEnabled = () => Boolean(config.ANTHROPIC_API_KEY) && !config.AI_DISABLED && !config.OFFLINE;

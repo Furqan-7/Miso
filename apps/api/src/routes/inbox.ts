@@ -1,10 +1,11 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { Router, type Request, type Response } from "express";
 import { z } from "zod";
 import { me } from "../auth";
 import { config } from "../config";
 import { db, schema } from "../db";
 import { randomToken } from "../lib/crypto";
+import { readResume } from "../lib/storage";
 import { badRequest, forbidden, notFound } from "../lib/errors";
 import { logger } from "../lib/logger";
 import { gmailNewMessagesSince, outlookFetchMessage } from "../services/mail/providers";
@@ -36,7 +37,7 @@ inboxRouter.post("/:id/handled", async (req, res) => {
 /** Send (or schedule) a response in the same thread, usually starting from the suggested draft. */
 inboxRouter.post("/:id/respond", async (req, res) => {
   const user = me(req);
-  const body = z.object({ body: z.string().min(1), sendNow: z.boolean().default(true) }).parse(req.body);
+  const body = z.object({ body: z.string().min(1), sendNow: z.boolean().default(true), attachResume: z.boolean().optional() }).parse(req.body);
   const [reply] = await db.select().from(schema.replies).where(and(eq(schema.replies.id, req.params.id), eq(schema.replies.userId, user.id)));
   if (!reply?.messageId) throw notFound("Reply not found");
   const [orig] = await db.select().from(schema.messages).where(eq(schema.messages.id, reply.messageId));
@@ -57,6 +58,7 @@ inboxRouter.post("/:id/respond", async (req, res) => {
       scheduledAt: new Date(),
       providerThreadId: orig.providerThreadId,
       trackingId: randomToken(12),
+      attachResume: body.attachResume ?? (reply.category === "asked_for_resume" && (await readResume(user.id)) !== null),
     })
     .returning();
   await db.update(schema.replies).set({ handled: true }).where(eq(schema.replies.id, reply.id));
@@ -158,12 +160,24 @@ export async function openPixel(req: Request, res: Response) {
   res.set({ "content-type": "image/gif", "cache-control": "no-store, max-age=0" }).send(PIXEL);
 }
 
+/** GET only shows a confirmation button: link scanners in corporate mail prefetch GET URLs. */
+export function unsubscribePage(req: Request, res: Response) {
+  const id = String(req.params.id).replace(/[^A-Za-z0-9_-]/g, "");
+  res
+    .type("html")
+    .send(`<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><body style="font-family:system-ui,sans-serif;max-width:28rem;margin:4rem auto;padding:0 1rem"><p>Don't want more emails from this sender?</p><form method="post" action="/api/t/u/${id}"><button style="padding:.6rem 1rem;border-radius:8px;border:1px solid #ccc;cursor:pointer">Unsubscribe</button></form></body>`);
+}
+
+/** RFC 8058 one-click unsubscribe (POST from the mail client or the confirmation page). */
 export async function unsubscribe(req: Request, res: Response) {
   const [m] = await db.select().from(schema.messages).where(eq(schema.messages.trackingId, String(req.params.id)));
   if (m) {
     await db.insert(schema.suppressions).values({ userId: m.userId, email: m.toEmail.toLowerCase(), reason: "unsubscribe" }).onConflictDoNothing();
     if (m.applicationId) {
-      await db.update(schema.messages).set({ status: "cancelled", error: "unsubscribed" }).where(and(eq(schema.messages.applicationId, m.applicationId), eq(schema.messages.status, "scheduled")));
+      await db
+        .update(schema.messages)
+        .set({ status: "cancelled", error: "unsubscribed" })
+        .where(and(eq(schema.messages.applicationId, m.applicationId), inArray(schema.messages.status, ["scheduled", "pending_approval", "draft"])));
     }
   }
   res.type("html").send("<p style='font-family:sans-serif'>You won't receive further emails from this sender. Sorry for the interruption.</p>");
