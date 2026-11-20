@@ -21,10 +21,10 @@ import { badRequest } from "../lib/errors";
 import { scoreJobsForUser } from "../services/discovery";
 import { analyzeWritingStyle, enrichGithub, enrichPortfolio, githubReposToProjects, linkedinNote } from "../services/enrich";
 import { parseResume } from "../services/resume";
+import { resumePath, UPLOAD_DIR } from "../lib/storage";
 
 export const profileRouter = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024 } });
-export const UPLOAD_DIR = path.resolve(process.env.UPLOAD_DIR ?? "uploads");
 
 const ProjectZ = z.object({ name: z.string(), description: z.string().default(""), technologies: z.array(z.string()).default([]), url: z.string().optional(), highlights: z.array(z.string()).optional() });
 
@@ -85,31 +85,35 @@ profileRouter.post("/resume", upload.single("file"), async (req, res) => {
   if (!req.file && !text) throw badRequest("Attach a PDF as 'file' or send 'text'");
   if (req.file && req.file.mimetype !== "application/pdf" && !req.file.originalname.toLowerCase().endsWith(".pdf")) throw badRequest("Only PDF resumes are supported");
   const { resume, text: extracted, source } = await parseResume({ pdf: req.file?.buffer, text });
-  let resumeUrl: string | undefined;
+  if (source === "fallback" && !extracted.trim()) {
+    // Without AI we can only read text-based PDFs; don't wipe the profile with an empty parse.
+    throw badRequest("We couldn't read any text from this PDF (it may be a scanned image). Paste the text instead, or set ANTHROPIC_API_KEY so Claude can read it.");
+  }
   if (req.file) {
+    // Stored for the public profile download and for attaching when someone asks for your resume.
     await mkdir(UPLOAD_DIR, { recursive: true });
-    const fname = `${user.id}.pdf`;
-    await writeFile(path.join(UPLOAD_DIR, fname), req.file.buffer);
-    resumeUrl = `${config.API_URL}/api/public/resume/${user.publicSlug}.pdf`;
+    await writeFile(resumePath(user.id), req.file.buffer);
   }
   const [current] = await db.select().from(schema.profiles).where(eq(schema.profiles.userId, user.id));
-  const mergeReplace = req.query.mode !== "merge";
+  // Default: merge, so re-uploading never wipes projects imported from GitHub or added by hand.
+  // ?mode=replace swaps everything for what's in the new resume.
+  const replace = req.query.mode === "replace";
+  const parsedNames = new Set(resume.projects.map((pr) => pr.name.toLowerCase()));
   const [profile] = await db
     .update(schema.profiles)
     .set({
       headline: resume.headline ?? current.headline,
       summary: resume.summary ?? current.summary,
-      skills: normalizeSkills(mergeReplace ? resume.skills : [...current.skills, ...resume.skills]),
-      projects: mergeReplace ? resume.projects : [...current.projects, ...resume.projects],
-      experience: resume.experience,
-      education: resume.education,
+      skills: normalizeSkills(replace ? resume.skills : [...current.skills, ...resume.skills]),
+      projects: replace ? resume.projects : [...resume.projects, ...current.projects.filter((pr) => !parsedNames.has(pr.name.toLowerCase()))],
+      experience: replace || resume.experience.length ? resume.experience : current.experience,
+      education: replace || resume.education.length ? resume.education : current.education,
       links: { ...current.links, ...Object.fromEntries(Object.entries(resume.links).filter(([, v]) => v)) },
-      yearsExperience: resume.yearsExperience,
+      yearsExperience: replace || resume.yearsExperience > 0 ? resume.yearsExperience : current.yearsExperience,
       experienceLevel: resume.yearsExperience >= 1 ? "experienced" : current.experienceLevel,
       college: current.college ?? resume.education[0]?.institution ?? null,
       resumeText: extracted.slice(0, 50000),
       resumeFileName: req.file?.originalname ?? current.resumeFileName,
-      resumeUrl: resumeUrl ?? current.resumeUrl,
       updatedAt: new Date(),
     })
     .where(eq(schema.profiles.userId, user.id))

@@ -34,7 +34,15 @@ export function fallbackPrep(input: { company: typeof schema.companies.$inferSel
   const ranked = rankProjects(input.profile.projects, target).slice(0, 3);
   const technical = skills.slice(0, 4).flatMap((s) => TECH_QUESTIONS[s].map((q) => ({ question: q, why: `${s} appears in the role or their stack`, category: "technical" as const })));
   return {
-    companyBrief: [input.company.product ?? input.company.description ?? input.company.name, input.company.techStack.length ? `Stack: ${input.company.techStack.slice(0, 8).join(", ")}.` : "", input.company.recentNews[0] ? `Recent: ${input.company.recentNews[0].title}.` : ""].filter(Boolean).join(" "),
+    companyBrief: [
+      input.company.product ? `${input.company.name}: ${input.company.product}` : input.company.description ?? input.company.name,
+      input.company.techStack.length ? `Stack: ${input.company.techStack.slice(0, 8).join(", ")}` : "",
+      input.company.recentNews[0] ? `Recent: ${input.company.recentNews[0].title}` : "",
+    ]
+      .filter(Boolean)
+      .map((x) => x.replace(/[.\s]+$/, ""))
+      .join(". ")
+      .concat("."),
     likelyQuestions: [
       { question: `Why ${input.company.name}?`, why: "Asked in almost every first round", category: "company" },
       { question: "Walk me through a project you're proud of.", why: "Tests depth and ownership", category: "behavioral" },

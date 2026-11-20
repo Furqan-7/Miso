@@ -1,3 +1,4 @@
+import "./lib/polyfills"; // must load before pdf.js (see file)
 import cookieParser from "cookie-parser";
 import cors from "cors";
 import express, { type Request, type Response } from "express";
@@ -8,7 +9,7 @@ import { errorHandler } from "./lib/errors";
 import { authRouter } from "./routes/auth";
 import { companiesRouter, contactsRouter } from "./routes/companies";
 import { crmRouter } from "./routes/crm";
-import { gmailWebhook, inboxRouter, openPixel, outlookWebhook, unsubscribe } from "./routes/inbox";
+import { gmailWebhook, inboxRouter, openPixel, outlookWebhook, unsubscribe, unsubscribePage } from "./routes/inbox";
 import { jobsRouter } from "./routes/jobs";
 import { mailboxesRouter, oauthCallback } from "./routes/mailboxes";
 import { analyticsRouter, billingRouter, extensionRouter, notificationsRouter, orgRouter, publicProfile, publicResume } from "./routes/misc";
@@ -30,6 +31,7 @@ export function createApp() {
     }),
   );
   app.use(express.json({ limit: "2mb" }));
+  app.use(express.urlencoded({ extended: false, limit: "100kb" })); // one-click unsubscribe posts a form
   app.use(cookieParser());
 
   const api = express.Router();
@@ -44,7 +46,7 @@ export function createApp() {
   api.post("/webhooks/gmail", gmailWebhook);
   api.post("/webhooks/outlook", outlookWebhook);
   api.get("/t/o/:id", openPixel);
-  api.get("/t/u/:id", unsubscribe);
+  api.get("/t/u/:id", unsubscribePage);
   api.post("/t/u/:id", unsubscribe); // RFC 8058 one-click
   api.get("/public/resume/:slug", publicResume);
   api.get("/public/:slug", publicProfile);

@@ -39,14 +39,24 @@ Principles:
 - Plain text, no markdown, no placeholders like [Name].
 - Sign with the sender's name. If a resume/portfolio link is given, include it once near the end.`;
 
-export async function loadEmailContext(userId: string, contactId: string, opts: { jobId?: string | null; tone: Tone; step?: number }): Promise<EmailContext & { writingStyle?: unknown; writingSample?: string | null }> {
+/**
+ * The resume/portfolio link to put in emails: the user's own link if they set one, otherwise their
+ * public profile tailored to the job (projects reordered for that role). Never a link that would 404.
+ */
+export function resumeLink(user: { publicSlug: string | null }, profile: { resumeUrl: string | null; publicVisible: boolean }, jobId?: string | null): string | undefined {
+  if (profile.resumeUrl) return profile.resumeUrl;
+  if (!profile.publicVisible || !user.publicSlug) return undefined;
+  return `${config.APP_URL}/p/${user.publicSlug}${jobId ? `?for=${jobId}` : ""}`;
+}
+
+export async function loadEmailContext(userId: string, contactId: string, opts: { jobId?: string | null; tone: Tone; step?: number; includeLink?: boolean }): Promise<EmailContext & { writingStyle?: unknown; writingSample?: string | null }> {
   const [user] = await db.select().from(schema.users).where(eq(schema.users.id, userId));
   const [profile] = await db.select().from(schema.profiles).where(eq(schema.profiles.userId, userId));
   const [contact] = await db.select().from(schema.contacts).where(eq(schema.contacts.id, contactId));
   if (!user || !profile || !contact) throw notFound("Profile or contact not found");
   const [company] = await db.select().from(schema.companies).where(eq(schema.companies.id, contact.companyId));
   const [job] = opts.jobId ? await db.select().from(schema.jobs).where(eq(schema.jobs.id, opts.jobId)) : [];
-  const resumeUrl = profile.resumeUrl ?? (user.publicSlug ? `${config.APP_URL}/p/${user.publicSlug}` : undefined);
+  const resumeUrl = opts.includeLink === false ? undefined : resumeLink(user, profile, job?.id);
   return {
     sender: {
       name: user.name,

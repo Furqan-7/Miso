@@ -8,6 +8,9 @@ import { ingestJobs } from "../src/services/discovery";
 import { devOutbox } from "../src/services/mail/providers";
 import { dispatchDue } from "../src/services/sequencer";
 import { tasks } from "../src/tasks";
+import { mkdir, writeFile } from "node:fs/promises";
+import { resumePath, UPLOAD_DIR } from "../src/lib/storage";
+import { makePdf } from "./pdf";
 
 const app = createApp();
 const agent = request.agent(app); // keeps the session cookie
@@ -70,6 +73,34 @@ describe("onboarding & profile", () => {
     expect(res.body.profile.skills).toEqual(expect.arrayContaining(["Next.js", "PostgreSQL", "TypeScript"]));
     expect(res.body.profile.projects.map((p: { name: string }) => p.name)).toEqual(["ShopSmart", "ChatDocs"]);
     expect(res.body.profile.links.github).toBe("https://github.com/ashav");
+  });
+
+  it("parses a real PDF upload (text layer)", async () => {
+    const other = request.agent(app);
+    await other.post("/api/auth/signup").send({ name: "Pdf Tester", email: "pdf@example.com", password: "supersecret1" });
+    const pdf = makePdf(["Pdf Tester", "Backend Developer", "SKILLS", "Go, PostgreSQL, Docker, Kubernetes, Redis", "PROJECTS", "QueueKit | Go, Redis", "- A background job queue"]);
+    const res = await other.post("/api/profile/resume").attach("file", pdf, { filename: "resume.pdf", contentType: "application/pdf" });
+    expect(res.status).toBe(200);
+    expect(res.body.profile.skills).toEqual(expect.arrayContaining(["PostgreSQL", "Docker", "Kubernetes", "Redis"]));
+    expect(res.body.profile.resumeFileName).toBe("resume.pdf");
+  });
+
+  it("refuses an unreadable PDF instead of wiping the profile", async () => {
+    const before = (await agent.get("/api/profile")).body.profile.skills;
+    const res = await agent.post("/api/profile/resume").attach("file", Buffer.from("%PDF-1.4 garbage"), { filename: "scan.pdf", contentType: "application/pdf" });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/couldn't read/i);
+    expect((await agent.get("/api/profile")).body.profile.skills).toEqual(before);
+  });
+
+  it("re-uploading merges: keeps projects you added, updates matching ones", async () => {
+    await agent.put("/api/profile").send({ projects: [{ name: "ShopSmart", description: "old", technologies: [] }, { name: "MyGithubThing", description: "From GitHub", technologies: ["Go"] }] });
+    const res = await agent.post("/api/profile/resume").field("text", RESUME);
+    const names = res.body.profile.projects.map((p: { name: string }) => p.name);
+    expect(names).toEqual(expect.arrayContaining(["ShopSmart", "ChatDocs", "MyGithubThing"]));
+    expect(names.filter((n: string) => n === "ShopSmart")).toHaveLength(1);
+    const replaced = await agent.post("/api/profile/resume?mode=replace").field("text", RESUME);
+    expect(replaced.body.profile.projects.map((p: { name: string }) => p.name)).toEqual(["ShopSmart", "ChatDocs"]);
   });
 
   it("rejects non-PDF uploads", async () => {
@@ -264,6 +295,16 @@ describe("campaigns and sequences", () => {
     ids.app = th.applicationId!;
   });
 
+  it("approving a follow-up keeps its day-3 slot instead of sending it now", async () => {
+    const [fu] = await db.select().from(schema.messages).where(and(eq(schema.messages.applicationId, ids.app), eq(schema.messages.step, 1)));
+    const slot = new Date(Date.now() + 3 * 86400000);
+    await db.update(schema.messages).set({ status: "pending_approval", scheduledAt: slot }).where(eq(schema.messages.id, fu.id));
+    const res = await agent.post(`/api/outreach/messages/${fu.id}/approve`).send({});
+    expect(res.status).toBe(200);
+    expect(new Date(res.body.message.scheduledAt).getTime()).toBeGreaterThanOrEqual(slot.getTime() - 60_000);
+    await db.update(schema.messages).set({ status: "scheduled" }).where(eq(schema.messages.id, fu.id));
+  });
+
   it("enforces a minimum gap between sends from one mailbox", async () => {
     // make two messages due at once
     const due = await db.select().from(schema.messages).where(and(eq(schema.messages.userId, ids.userId), eq(schema.messages.status, "scheduled")));
@@ -300,12 +341,34 @@ describe("replies, bounces and the inbox", () => {
     expect(links.body.googleCalendar).toContain("calendar.google.com");
   });
 
-  it("responds in-thread with the suggested reply", async () => {
+  it("responds in-thread with the suggested reply, and the response actually sends", async () => {
     const inbox = await agent.get("/api/inbox");
     const r = inbox.body.items[0];
     const res = await agent.post(`/api/inbox/${r.id}/respond`).send({ body: r.suggestedReply });
     expect(res.status).toBe(201);
     expect(res.body.message.subject).toMatch(/^Re:/);
+    const report = await dispatchDue(FUTURE(), { minGapSeconds: 0, maxGapSeconds: 0 });
+    expect(report.sent).toBeGreaterThanOrEqual(1);
+    const [m] = await db.select().from(schema.messages).where(eq(schema.messages.id, res.body.message.id));
+    expect(m.status).toBe("sent"); // used to be cancelled by the "reply received" check
+  });
+
+  it("attaches the resume PDF when they ask for it", async () => {
+    await mkdir(UPLOAD_DIR, { recursive: true });
+    await writeFile(resumePath(ids.userId), makePdf(["Asha Verma resume"]));
+    const [company] = await db.select().from(schema.companies).where(eq(schema.companies.domain, "paynest.io"));
+    const [dev] = await db.select().from(schema.contacts).where(and(eq(schema.contacts.companyId, company.id), eq(schema.contacts.name, "Dev Malhotra")));
+    const d = await agent.post("/api/outreach/drafts").send({ contactId: dev.id });
+    await agent.post(`/api/outreach/messages/${d.body.message.id}/approve`).send({ sendNow: true });
+    await dispatchDue(FUTURE(), { minGapSeconds: 0, maxGapSeconds: 0 });
+    const sim = await agent.post("/api/inbox/simulate").send({ messageId: d.body.message.id, body: "Thanks! Could you send over your resume?" });
+    expect(sim.body.category).toBe("asked_for_resume");
+    const resp = await agent.post(`/api/inbox/${sim.body.reply.id}/respond`).send({ body: "Here it is!" });
+    expect(resp.body.message.attachResume).toBe(true);
+    const before = devOutbox.length;
+    await dispatchDue(FUTURE(), { minGapSeconds: 0, maxGapSeconds: 0 });
+    const sent = devOutbox.slice(before).find((e) => e.text === "Here it is!");
+    expect(sent?.attachments?.[0]).toMatchObject({ filename: "Asha_Verma_Resume.pdf", contentType: "application/pdf" });
   });
 
   it("handles bounces: suppress the address and mark the contact invalid", async () => {
@@ -410,11 +473,35 @@ describe("extras", () => {
     expect(res.body.usage.sends.used).toBeGreaterThan(0);
   });
 
-  it("unsubscribe links suppress the recipient", async () => {
+  it("unsubscribe: GET only confirms (link scanners), POST suppresses", async () => {
     const [m] = await db.select().from(schema.messages).where(eq(schema.messages.id, ids.message));
-    await request(app).get(`/api/t/u/${m.trackingId}`).expect(200);
-    const sup = await db.select().from(schema.suppressions).where(eq(schema.suppressions.email, m.toEmail));
-    expect(sup.length).toBe(1);
+    const page = await request(app).get(`/api/t/u/${m.trackingId}`).expect(200);
+    expect(page.text).toContain('method="post"');
+    expect(await db.select().from(schema.suppressions).where(eq(schema.suppressions.email, m.toEmail))).toHaveLength(0);
+    await request(app).post(`/api/t/u/${m.trackingId}`).type("form").send("List-Unsubscribe=One-Click").expect(200);
+    expect(await db.select().from(schema.suppressions).where(eq(schema.suppressions.email, m.toEmail))).toHaveLength(1);
+  });
+
+  it("only the person who added a contact can edit it", async () => {
+    const [kabir] = await db.select().from(schema.contacts).where(eq(schema.contacts.name, "Kabir Singh"));
+    const stranger = request.agent(app);
+    await stranger.post("/api/auth/signup").send({ name: "Stranger", email: "stranger@example.com", password: "supersecret1" });
+    expect((await stranger.patch(`/api/contacts/${kabir.id}`).send({ title: "CEO" })).status).toBe(403);
+    expect((await agent.patch(`/api/contacts/${kabir.id}`).send({ title: "Senior EM" })).status).toBe(200);
+  });
+
+  it("sends the daily digest of new matches", async () => {
+    const r = await tasks.dailyDigest();
+    expect(r.users).toBeGreaterThanOrEqual(1);
+    const notes = await agent.get("/api/notifications");
+    expect(notes.body.items.some((n: { type: string }) => n.type === "daily_digest")).toBe(true);
+  });
+
+  it("uses a role-tailored public profile link in emails", async () => {
+    const [job] = await db.select().from(schema.jobs).where(eq(schema.jobs.companyName, "PayNest"));
+    const [contact] = await db.select().from(schema.contacts).where(eq(schema.contacts.name, "Kabir Singh"));
+    const d = await agent.post("/api/outreach/drafts").send({ contactId: contact.id, jobId: job.id });
+    expect(d.body.message.body).toContain(`/p/asha-verma?for=${job.id}`);
   });
 
   it("answers the Outlook webhook validation handshake", async () => {

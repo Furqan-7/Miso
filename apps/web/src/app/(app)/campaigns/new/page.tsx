@@ -95,6 +95,11 @@ export default function NewCampaign() {
               <label className="flex items-center gap-2 text-sm"><input type="checkbox" disabled={!pro} checked={f.abTest} onChange={(e) => setF({ ...f, abTest: e.target.checked })} /> A/B test subject lines {!pro && <Badge>Pro</Badge>}</label>
             </div>
           </Card>
+          {!pro && (
+            <div className="rounded-lg border border-warn/30 bg-warn-soft px-3 py-2 text-sm text-warn">
+              Bulk campaigns are a Pro feature. On Free, draft emails one at a time from any job or company page (approval mode, 15 sends a day). Switch plans in Settings.
+            </div>
+          )}
           {error && <ErrorNote>{error}</ErrorNote>}
           <div className="flex flex-wrap gap-2">
             <Button variant="secondary" loading={busy === "preview"} onClick={() => save(false)}>Preview targets</Button>

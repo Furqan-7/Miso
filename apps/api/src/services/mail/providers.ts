@@ -115,7 +115,7 @@ export async function accessToken(account: EmailAccount): Promise<string> {
 export const devOutbox: (OutgoingEmail & { accountId: string; providerMessageId: string; threadId: string })[] = [];
 
 // ---------------------------------------------------------------- Send
-export async function sendEmail(account: EmailAccount, email: OutgoingEmail, threadId?: string | null): Promise<SendResult> {
+export async function sendEmail(account: EmailAccount, email: OutgoingEmail, threadId?: string | null, replyToProviderMessageId?: string | null): Promise<SendResult> {
   if (account.provider === "dev") {
     const providerMessageId = `dev-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
     const tid = threadId ?? `thread-${providerMessageId}`;
@@ -133,6 +133,28 @@ export async function sendEmail(account: EmailAccount, email: OutgoingEmail, thr
     const json = (await res.json()) as { id: string; threadId: string; error?: { message: string; code: number } };
     if (!res.ok) throw new ProviderError(`Gmail send failed: ${json.error?.message ?? res.status}`, res.status === 400 || res.status === 403);
     return { providerMessageId: json.id, threadId: json.threadId };
+  }
+  // Outlook follow-up: reply inside the original conversation so it threads for the recipient.
+  if (replyToProviderMessageId) {
+    const draftRes = await httpFetch(`https://graph.microsoft.com/v1.0/me/messages/${replyToProviderMessageId}/createReply`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: "{}",
+    });
+    const reply = (await draftRes.json()) as { id: string; conversationId: string };
+    if (draftRes.ok) {
+      const upd = await httpFetch(`https://graph.microsoft.com/v1.0/me/messages/${reply.id}`, {
+        method: "PATCH",
+        headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+        body: JSON.stringify({ subject: email.subject, body: { contentType: "HTML", content: email.html ?? email.text } }),
+      });
+      if (upd.ok) {
+        const sent = await httpFetch(`https://graph.microsoft.com/v1.0/me/messages/${reply.id}/send`, { method: "POST", headers: { authorization: `Bearer ${token}` } });
+        if (!sent.ok) throw new ProviderError(`Outlook send failed: ${sent.status}`);
+        return { providerMessageId: reply.id, threadId: reply.conversationId };
+      }
+    }
+    // fall through to a fresh message if the original can't be replied to (e.g. deleted)
   }
   // Outlook / Microsoft Graph: create the message (so we learn its id + conversationId), then send it.
   const create = await httpFetch("https://graph.microsoft.com/v1.0/me/messages", {

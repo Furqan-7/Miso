@@ -34,12 +34,12 @@ Without Redis you can still run sending and reminders inside the API: `RUN_SCHED
 ## Tests
 
 ```bash
-pnpm test                                   # shared (27) + API (53) + extension (3)
+pnpm test                                   # shared (27) + API (67) + extension (3)
 pnpm --filter @jobpilot/api test            # needs Postgres; uses database jobpilot_test
-pnpm test:e2e                               # Playwright against a running stack (seed first)
+pnpm test:e2e                               # 10 Playwright tests against a running stack (seed first)
 ```
 
-The API suite runs the real HTTP app against a real Postgres. It covers signup, resume parsing, discovery dedupe, scam filtering, match ranking, contact email guessing, drafting, approval, sending with tracking, opens, free-plan limits, autopilot campaigns, follow-up scheduling, random gaps, daily limits, one-click pause, reply classification, stopping sequences, bounces, suppression, the kanban board, prep packs, analytics, public profiles, extension capture, the college plan, unsubscribe and webhooks. Outbound network calls are switched off in tests (`OFFLINE=true`).
+The API suite runs the real HTTP app against a real Postgres. It covers signup, resume parsing, discovery dedupe, scam filtering, match ranking, contact email guessing, drafting, approval, sending with tracking, opens, free-plan limits, autopilot campaigns, follow-up scheduling, random gaps, daily limits, one-click pause, reply classification, stopping sequences, bounces, suppression, the kanban board, prep packs, analytics, public profiles, extension capture, the college plan, unsubscribe and webhooks. Outbound network calls are switched off in tests (`OFFLINE=true`). Regression tests cover real PDF parsing, SSRF blocking, auth rate limits, one-click unsubscribe, resume attachments and follow-up timing.
 
 ## Feature map
 
@@ -85,8 +85,15 @@ Every email goes from the user's own mailbox, never a shared server. Other defau
 - Weekday sends around 10 AM in the recipient's time zone.
 - Verified addresses only; bounced and unsubscribed recipients are suppressed.
 - One person per company per campaign.
-- A `List-Unsubscribe` header on every email.
+- `List-Unsubscribe` + one-click (RFC 8058) headers on every email. The link asks for confirmation, so corporate link scanners can't unsubscribe people by accident.
 - Approval mode by default.
+
+## Security notes
+
+- Every server-side fetch of a user-supplied URL (portfolio, company site, careers page) is checked against private, loopback and link-local addresses on every redirect hop (SSRF protection).
+- Login and signup are rate-limited (20 per 15 minutes per IP + email; in-memory, so use a shared store if you run several API replicas).
+- OAuth tokens are encrypted at rest (AES-256-GCM). The API refuses to start in production with the default `JWT_SECRET` / `ENCRYPTION_KEY`.
+- Companies and contacts are shared across accounts so research isn't repeated; only the person who added a contact can edit it.
 
 ## Useful scripts
 

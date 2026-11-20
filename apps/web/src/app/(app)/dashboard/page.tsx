@@ -12,7 +12,7 @@ import type { Job, Message, Reply } from "@/lib/types";
 export default function Dashboard() {
   const { user, profile } = useSession();
   const toast = useToast();
-  const feed = useApi<{ items: Job[] }>("/jobs/feed?sinceHours=72&minScore=50&limit=8");
+  const feed = useApi<{ items: Job[] }>("/jobs/feed?sinceHours=72&minScore=50&limit=100");
   const pending = useApi<{ items: Message[] }>("/outreach/messages?status=pending_approval");
   const replies = useApi<{ items: Reply[] }>("/inbox");
   const funding = useApi<{ items: { id: string; companyName: string; companyId: string | null; amount: string | null; round: string | null; title: string; url: string; announcedAt: string | null }[] }>("/jobs/funding");
@@ -59,7 +59,7 @@ export default function Dashboard() {
           <CardHeader title="Today's matches" subtitle="Ranked by how well they fit your profile" action={<Link href="/jobs" className="text-sm text-brand">All jobs →</Link>} />
           {feed.loading ? <Loading /> : feed.data?.items.length ? (
             <div className="divide-y divide-border">
-              {feed.data.items.map((j) => <JobCard key={j.id} job={j} />)}
+              {feed.data.items.slice(0, 8).map((j) => <JobCard key={j.id} job={j} />)}
             </div>
           ) : (
             <Empty title="No new matches yet" body="Run discovery or add a company's careers page. Matches appear here daily." action={<Button size="sm" onClick={discover} loading={discovering}>Find jobs</Button>} />

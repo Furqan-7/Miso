@@ -51,6 +51,20 @@ export async function outreachRecords(userId: string, sinceDays = 90): Promise<O
   });
 }
 
+/** Continuous day-by-day series (zero days included) from the first send to today. */
+export function fillDays(m: Map<string, { date: string; sent: number; replies: number }>) {
+  const dates = [...m.keys()].sort();
+  if (!dates.length) return [];
+  const out: { date: string; sent: number; replies: number }[] = [];
+  const end = new Date().toISOString().slice(0, 10);
+  for (let d = new Date(`${dates[0]}T00:00:00Z`); ; d = new Date(d.getTime() + 86400000)) {
+    const key = d.toISOString().slice(0, 10);
+    out.push(m.get(key) ?? { date: key, sent: 0, replies: 0 });
+    if (key >= end || out.length > 400) break;
+  }
+  return out;
+}
+
 export async function analyticsOverview(userId: string, sinceDays = 90) {
   const recs = await outreachRecords(userId, sinceDays);
   const delivered = recs.filter((r) => !r.bounced);
@@ -106,7 +120,7 @@ export async function analyticsOverview(userId: string, sinceDays = 90) {
     byTone: groupRates(recs, (r) => r.tone),
     byStep: groupRates(recs, (r) => (r.step === 0 ? "initial" : `follow-up ${r.step}`)),
     abTests,
-    timeline: [...timeline.values()].sort((a, b) => a.date.localeCompare(b.date)),
+    timeline: fillDays(timeline),
     insights: computeInsights(recs),
   };
 }

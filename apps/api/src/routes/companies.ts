@@ -3,7 +3,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { me } from "../auth";
 import { db, schema } from "../db";
-import { notFound } from "../lib/errors";
+import { forbidden, notFound } from "../lib/errors";
 import { domainFromUrl } from "../lib/http";
 import { findOrCreateCompany } from "../services/companies";
 import { verifyEmail } from "../services/emailVerify";
@@ -94,7 +94,10 @@ contactsRouter.post("/:id/posts", async (req, res) => {
 
 contactsRouter.patch("/:id", async (req, res) => {
   const body = z.object({ email: z.string().email().optional(), title: z.string().optional(), college: z.string().optional(), linkedinUrl: z.string().optional(), twitterUrl: z.string().optional(), githubUrl: z.string().optional() }).parse(req.body);
-  const [updated] = await db.update(schema.contacts).set({ ...body, ...(body.email ? { emailStatus: "unknown", emailConfidence: 50 } : {}) }).where(eq(schema.contacts.id, req.params.id)).returning();
-  if (!updated) throw notFound("Contact not found");
+  const [existing] = await db.select().from(schema.contacts).where(eq(schema.contacts.id, String(req.params.id)));
+  if (!existing) throw notFound("Contact not found");
+  // Contacts are shared across accounts; only the person who added one can edit it.
+  if (existing.createdByUserId && existing.createdByUserId !== me(req).id) throw forbidden("Only the person who added this contact can edit it");
+  const [updated] = await db.update(schema.contacts).set({ ...body, ...(body.email ? { emailStatus: "unknown", emailConfidence: 50 } : {}) }).where(eq(schema.contacts.id, existing.id)).returning();
   res.json({ contact: updated });
 });

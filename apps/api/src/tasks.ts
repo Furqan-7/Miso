@@ -1,4 +1,4 @@
-import { and, eq, isNull, lte, or } from "drizzle-orm";
+import { and, eq, gte, isNull, lte, or, sql } from "drizzle-orm";
 import { db, schema } from "./db";
 import { logger } from "./lib/logger";
 import { weeklyReport } from "./services/analytics";
@@ -55,6 +55,19 @@ export const tasks = {
     for (const a of accounts) await recomputeHealth(a.id);
     return { accounts: accounts.length };
   },
+  /** Morning digest: "N new matches for you today". */
+  async dailyDigest() {
+    const since = new Date(Date.now() - 24 * 3600000);
+    const rows = await db
+      .select({ userId: schema.jobMatches.userId, n: sql<number>`count(*)::int`, best: sql<number>`max(${schema.jobMatches.score})::int` })
+      .from(schema.jobMatches)
+      .where(and(gte(schema.jobMatches.createdAt, since), gte(schema.jobMatches.score, 60), eq(schema.jobMatches.status, "new")))
+      .groupBy(schema.jobMatches.userId);
+    for (const r of rows) {
+      await notify(r.userId, { type: "daily_digest", title: `${r.n} new job match${r.n > 1 ? "es" : ""} today`, body: `Best match scores ${r.best}/100. Open your feed to review and reach out.`, link: "/dashboard" });
+    }
+    return { users: rows.length };
+  },
   async weeklyReports() {
     const users = await db.select({ id: schema.users.id }).from(schema.users);
     for (const u of users) await weeklyReport(u.id).catch(() => undefined);
@@ -71,5 +84,6 @@ export const SCHEDULE: Record<TaskName, string> = {
   discovery: "17 */6 * * *",
   renewSubscriptions: "43 */12 * * *",
   health: "11 3 * * *",
+  dailyDigest: "43 3 * * *",
   weeklyReports: "7 9 * * 1",
 };

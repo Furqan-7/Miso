@@ -17,6 +17,7 @@ function InboxInner() {
   const [filter, setFilter] = useState<Filter>("all");
   const [selected, setSelected] = useState<string | null>(params.get("reply"));
   const [draft, setDraft] = useState("");
+  const [attach, setAttach] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [links, setLinks] = useState<{ calCom: string | null; googleCalendar: string } | null>(null);
   const items = (data?.items ?? []).filter((r) => filter === "all" || r.category === filter);
@@ -24,6 +25,7 @@ function InboxInner() {
 
   useEffect(() => {
     setDraft(current?.suggestedReply ?? "");
+    setAttach(current?.category === "asked_for_resume");
     setLinks(null);
     if (current) api<{ calCom: string | null; googleCalendar: string }>(`/inbox/${current.id}/booking-links`).then(setLinks).catch(() => undefined);
   }, [current?.id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -96,8 +98,11 @@ function InboxInner() {
               {current.category !== "out_of_office" && (
                 <div className="mt-5 space-y-3">
                   <Textarea label="Your reply" rows={7} value={draft} onChange={(e) => setDraft(e.target.value)} hint="Suggested from their message. Edit freely." />
+                  <label className="flex items-center gap-2 text-sm text-ink-2">
+                    <input type="checkbox" checked={attach} onChange={(e) => setAttach(e.target.checked)} /> Attach my resume (PDF)
+                  </label>
                   <div className="flex flex-wrap gap-2">
-                    <Button loading={busy === "send"} disabled={!draft.trim()} onClick={() => act("send", () => post(`/inbox/${current.id}/respond`, { body: draft }), "Reply queued in the same thread")}>Send reply</Button>
+                    <Button loading={busy === "send"} disabled={!draft.trim()} onClick={() => act("send", () => post(`/inbox/${current.id}/respond`, { body: draft, attachResume: attach }), "Reply queued in the same thread")}>Send reply</Button>
                     {links?.calCom && <a className="inline-flex h-10 items-center rounded-lg border border-border px-4 text-sm font-medium hover:bg-surface-2" href={links.calCom} target="_blank" rel="noreferrer">Cal.com link ↗</a>}
                     {links && <a className="inline-flex h-10 items-center rounded-lg border border-border px-4 text-sm font-medium hover:bg-surface-2" href={links.googleCalendar} target="_blank" rel="noreferrer">Add to Google Calendar ↗</a>}
                     <Button variant="secondary" loading={busy === "iv"} onClick={() => act("iv", () => post(`/inbox/${current.id}/interview`, {}), "Moved to Interview. Prep pack is ready in the tracker")}>Interview booked</Button>
