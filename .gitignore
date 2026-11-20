@@ -11,3 +11,5 @@ next-env.d.ts
 uploads
 test-results
 playwright-report
+dump.rdb
+*.tsbuildinfo

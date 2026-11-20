@@ -1,0 +1,79 @@
+@import "tailwindcss";
+
+/* Design tokens. Components use these semantic names, never raw hex. */
+@theme {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  --color-bg: #f7f7f5;
+  --color-surface: #ffffff;
+  --color-surface-2: #f1f1ee;
+  --color-border: #e4e4df;
+  --color-ink: #17181a;
+  --color-ink-2: #4b4d52;
+  --color-ink-3: #7c7f86;
+  --color-brand: #0f766e;
+  --color-brand-ink: #ffffff;
+  --color-brand-soft: #e6f4f2;
+  --color-ok: #15803d;
+  --color-ok-soft: #e8f5ec;
+  --color-warn: #b45309;
+  --color-warn-soft: #fdf3e3;
+  --color-bad: #b91c1c;
+  --color-bad-soft: #fdecec;
+  --color-info: #1d4ed8;
+  --color-info-soft: #e9effd;
+
+  --color-series-1: #2a78d6;
+  --color-series-2: #eb6834;
+  --color-grid: #ecece8;
+
+  --radius-card: 14px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --color-bg: #0f1012;
+    --color-surface: #17181b;
+    --color-surface-2: #1f2024;
+    --color-border: #2b2d31;
+    --color-ink: #ececea;
+    --color-ink-2: #b6b8bc;
+    --color-ink-3: #85888e;
+    --color-brand: #2dd4bf;
+    --color-brand-ink: #062a26;
+    --color-brand-soft: #0f2c29;
+    --color-ok: #4ade80;
+    --color-ok-soft: #10261a;
+    --color-warn: #fbbf24;
+    --color-warn-soft: #2a2010;
+    --color-bad: #f87171;
+    --color-bad-soft: #2c1414;
+    --color-info: #93b4fd;
+    --color-info-soft: #141d33;
+    --color-series-1: #3987e5;
+    --color-series-2: #d95926;
+    --color-grid: #26272b;
+  }
+}
+
+html,
+body {
+  background: var(--color-bg);
+  color: var(--color-ink);
+}
+
+body {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
+}
+
+.prose-plain {
+  white-space: pre-wrap;
+  line-height: 1.6;
+}
