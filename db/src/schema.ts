@@ -50,6 +50,7 @@ export const users = pgTable("users", {
   notificationPrefs: jsonb("notification_prefs").$type<{ push: boolean; whatsapp: boolean; email: boolean }>().notNull().default({ push: true, whatsapp: false, email: false }),
   pushSubscriptions: jsonb("push_subscriptions").$type<unknown[]>().notNull().default([]),
   sendingPaused: boolean("sending_paused").notNull().default(false),
+  weeklyGoal: integer("weekly_goal").notNull().default(25),
   onboardedAt: timestamp("onboarded_at", { withTimezone: true }),
   createdAt: createdAt(),
 });

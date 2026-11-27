@@ -1,0 +1,1 @@
+ALTER TABLE "users" ADD COLUMN "weekly_goal" integer DEFAULT 25 NOT NULL;

@@ -473,6 +473,34 @@ describe("extras", () => {
     expect(res.body.usage.sends.used).toBeGreaterThan(0);
   });
 
+  it("aggregates the dashboard: overview, pipeline, capacity, activity, goal", async () => {
+    const res = await agent.get("/api/dashboard?days=30");
+    expect(res.status).toBe(200);
+    const d = res.body;
+    expect(d.overview.sent.value).toBeGreaterThanOrEqual(3);
+    expect(d.overview.replies.value).toBeGreaterThanOrEqual(1);
+    expect(d.workload.map((w: { stage: string }) => w.stage)).toEqual(["found", "emailed", "replied", "interview", "offer", "rejected"]);
+    expect(d.workload.find((w: { stage: string }) => w.stage === "interview").count).toBeGreaterThanOrEqual(1);
+    expect(d.capacity.limit).toBeGreaterThan(0);
+    expect(d.capacity.sent + d.capacity.scheduled + d.capacity.free).toBeLessThanOrEqual(Math.max(d.capacity.limit, d.capacity.sent));
+    expect(d.activity.length).toBeGreaterThan(0);
+    expect(d.activity[0]).toHaveProperty("company");
+    expect(d.performance.companySize.length).toBeGreaterThan(0);
+    expect(d.weekly.goal).toBe(25);
+    expect(d.weekly.sent).toBeGreaterThanOrEqual(0);
+    await agent.put("/api/profile").send({ weeklyGoal: 30 });
+    expect((await agent.get("/api/dashboard")).body.weekly.goal).toBe(30);
+  });
+
+  it("returns sidebar counts", async () => {
+    const res = await agent.get("/api/nav-counts");
+    expect(res.status).toBe(200);
+    expect(res.body.stages).toHaveProperty("interview");
+    expect(res.body.dailySendLimit).toBeGreaterThan(0);
+    expect(res.body.mailboxes).toBeGreaterThanOrEqual(1);
+    expect(typeof res.body.pendingApproval).toBe("number");
+  });
+
   it("unsubscribe: GET only confirms (link scanners), POST suppresses", async () => {
     const [m] = await db.select().from(schema.messages).where(eq(schema.messages.id, ids.message));
     const page = await request(app).get(`/api/t/u/${m.trackingId}`).expect(200);

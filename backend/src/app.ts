@@ -9,6 +9,7 @@ import { errorHandler } from "./lib/errors";
 import { authRouter } from "./routes/auth";
 import { companiesRouter, contactsRouter } from "./routes/companies";
 import { crmRouter } from "./routes/crm";
+import { dashboardRouter } from "./routes/dashboard";
 import { gmailWebhook, inboxRouter, openPixel, outlookWebhook, unsubscribe, unsubscribePage } from "./routes/inbox";
 import { jobsRouter } from "./routes/jobs";
 import { mailboxesRouter, oauthCallback } from "./routes/mailboxes";
@@ -53,6 +54,7 @@ export function createApp() {
 
   // Authenticated
   api.use(requireAuth);
+  api.use(dashboardRouter);
   api.use("/profile", profileRouter);
   api.use("/jobs", jobsRouter);
   api.use("/companies", companiesRouter);

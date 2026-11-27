@@ -31,6 +31,7 @@ const ProjectZ = z.object({ name: z.string(), description: z.string().default(""
 const ProfilePatch = z.object({
   name: z.string().min(1).optional(),
   phone: z.string().optional(),
+  weeklyGoal: z.number().int().min(1).max(500).optional(),
   headline: z.string().optional(),
   summary: z.string().optional(),
   experienceLevel: z.enum(EXPERIENCE_LEVELS).optional(),
@@ -66,8 +67,13 @@ profileRouter.get("/", async (req, res) => {
 profileRouter.put("/", async (req, res) => {
   const user = me(req);
   const body = ProfilePatch.parse(req.body);
-  const { name, phone, ...p } = body;
-  if (name || phone !== undefined) await db.update(schema.users).set({ ...(name ? { name } : {}), ...(phone !== undefined ? { phone } : {}) }).where(eq(schema.users.id, user.id));
+  const { name, phone, weeklyGoal, ...p } = body;
+  if (name || phone !== undefined || weeklyGoal) {
+    await db
+      .update(schema.users)
+      .set({ ...(name ? { name } : {}), ...(phone !== undefined ? { phone } : {}), ...(weeklyGoal ? { weeklyGoal } : {}) })
+      .where(eq(schema.users.id, user.id));
+  }
   const patch: Partial<typeof schema.profiles.$inferInsert> = { ...p, updatedAt: new Date() };
   if (p.skills) patch.skills = normalizeSkills(p.skills);
   if (p.resumeUrl === "") patch.resumeUrl = null;
