@@ -1,6 +1,6 @@
 "use client";
 
-import { Badge } from "@/app/components/ui";
+import { Badge } from "@/app/components/common";
 
 export function CategoryBadge({ category }: { category: string }) {
   const map: Record<string, { tone: "ok" | "bad" | "info" | "warn" | "neutral" | "brand"; label: string }> = {

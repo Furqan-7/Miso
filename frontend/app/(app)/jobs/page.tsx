@@ -1,10 +1,15 @@
 "use client";
 
+import { Bookmark, BookmarkCheck, CircleCheck, Ellipsis, EyeOff, ExternalLink, Globe, Plus, Search } from "lucide-react";
 import { useState } from "react";
+import { Button, Card, Empty, ErrorNote, Input, Loading, PageHeader, Select, SwitchField, Textarea, useToast } from "@/app/components/common";
 import { JobCard, SOURCE_LABEL } from "@/app/components/jobs/JobCard";
-import { Button, Card, CardHeader, Empty, ErrorNote, Input, Loading, PageHeader, Select, Textarea, useToast } from "@/app/components/ui";
-import { errorMessage, post } from "@/app/services/api";
+import { Button as UIButton } from "@/app/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/app/components/ui/dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/app/components/ui/dropdown-menu";
+import { Input as UIInput } from "@/app/components/ui/input";
 import { useApi } from "@/app/hooks/useApi";
+import { errorMessage, post } from "@/app/services/api";
 import type { Job } from "@/app/types/api";
 
 export default function JobsPage() {
@@ -60,81 +65,145 @@ export default function JobsPage() {
     }
   };
 
+  const items = jobs.data?.items ?? [];
   return (
     <>
       <PageHeader
         title="Jobs"
-        subtitle="Every role we found, scored against your profile. Duplicates across sites are merged."
+        subtitle="Every role we found, scored against your profile. The same job on several boards is merged into one."
         actions={
           <>
-            <Button variant="secondary" onClick={() => setPanel(panel === "track" ? "none" : "track")}>Track a careers page</Button>
-            <Button variant="secondary" onClick={() => setPanel(panel === "add" ? "none" : "add")}>Add a job</Button>
+            <Button variant="secondary" onClick={() => setPanel("track")}>
+              <Globe /> Track a careers page
+            </Button>
+            <Button onClick={() => setPanel("add")}>
+              <Plus /> Add a job
+            </Button>
           </>
         }
       />
 
-      {panel === "add" && (
-        <Card className="mb-6">
-          <CardHeader title="Add a job you found" subtitle="From LinkedIn, Wellfound, a referral… We'll score it and track it." />
-          <form onSubmit={addJob} className="grid gap-3 p-5 sm:grid-cols-2">
-            <Input label="Job title" required value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
-            <Input label="Company" required value={form.company} onChange={(e) => setForm({ ...form, company: e.target.value })} />
-            <Input label="Link" type="url" required value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })} />
-            <Input label="Location" value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} />
-            <div className="sm:col-span-2"><Textarea label="Description" rows={4} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></div>
-            {err && <div className="sm:col-span-2"><ErrorNote>{err}</ErrorNote></div>}
-            <div className="sm:col-span-2"><Button type="submit" loading={busy}>Add job</Button></div>
-          </form>
-        </Card>
-      )}
-      {panel === "track" && (
-        <Card className="mb-6">
-          <CardHeader title="Track a company's careers page" subtitle="Greenhouse, Lever, Ashby and Workable boards are pulled automatically on every discovery run." />
-          <form onSubmit={track} className="grid gap-3 p-5 sm:grid-cols-3">
-            <div className="sm:col-span-2"><Input label="Careers page URL" type="url" required placeholder="https://jobs.ashbyhq.com/company" value={careers.url} onChange={(e) => setCareers({ ...careers, url: e.target.value })} /></div>
-            <Input label="Company name" value={careers.companyName} onChange={(e) => setCareers({ ...careers, companyName: e.target.value })} />
-            {err && <div className="sm:col-span-3"><ErrorNote>{err}</ErrorNote></div>}
-            <div className="sm:col-span-3"><Button type="submit" loading={busy}>Track</Button></div>
-          </form>
-        </Card>
-      )}
-
-      <Card>
-        <div className="grid gap-3 border-b border-border p-4 sm:grid-cols-4">
-          <Input placeholder="Search title, company, stack…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search jobs" />
-          <Select value={minScore} onChange={(e) => setMinScore(Number(e.target.value))} aria-label="Minimum score">
-            <option value={0}>Any score</option>
-            <option value={50}>Score 50+</option>
-            <option value={70}>Score 70+</option>
-            <option value={85}>Score 85+</option>
-          </Select>
-          <Select value={source} onChange={(e) => setSource(e.target.value)} aria-label="Source">
-            <option value="">All sources</option>
-            {Object.entries(SOURCE_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-          </Select>
-          <label className="flex items-center gap-2 text-sm text-ink-2">
-            <input type="checkbox" checked={remote} onChange={(e) => setRemote(e.target.checked)} /> Remote only
-          </label>
+      <Card className="overflow-hidden">
+        <div className="flex flex-col gap-2 border-b p-3 md:flex-row md:items-center">
+          <div className="relative flex-1">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-subtle-foreground" />
+            <UIInput placeholder="Search title, company, stack…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search jobs" className="pl-8" />
+          </div>
+          <div className="grid grid-cols-2 gap-2 md:flex md:w-auto">
+            <Select value={minScore} onChange={(e) => setMinScore(Number(e.target.value))} aria-label="Minimum score" className="md:w-36">
+              <option value={0}>Any score</option>
+              <option value={50}>Score 50+</option>
+              <option value={70}>Score 70+</option>
+              <option value={85}>Score 85+</option>
+            </Select>
+            <Select value={source} onChange={(e) => setSource(e.target.value)} aria-label="Source" className="md:w-44">
+              <option value="">All sources</option>
+              {Object.entries(SOURCE_LABEL).map(([k, v]) => (
+                <option key={k} value={k}>
+                  {v}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div className="md:pl-2">
+            <SwitchField label="Remote only" checked={remote} onChange={setRemote} />
+          </div>
         </div>
-        {jobs.loading && !jobs.data ? <Loading /> : jobs.data?.items.length ? (
-          <div className="divide-y divide-border">
-            {jobs.data.items.map((j) => (
+        <div className="flex items-center justify-between border-b px-4 py-2 text-[11px] text-subtle-foreground">
+          <span>{jobs.loading && !jobs.data ? "Loading…" : `${items.length} ${items.length === 1 ? "job" : "jobs"}`}</span>
+          <span>Sorted by match score</span>
+        </div>
+        {jobs.loading && !jobs.data ? (
+          <Loading />
+        ) : items.length ? (
+          <div className="divide-y">
+            {items.map((j) => (
               <JobCard
                 key={j.id}
                 job={j}
                 actions={
                   <>
-                    <Button size="sm" variant={j.match?.status === "saved" ? "secondary" : "primary"} onClick={() => setStatus(j, "saved")}>{j.match?.status === "saved" ? "Saved" : "Save"}</Button>
-                    <Button size="sm" variant="ghost" onClick={() => setStatus(j, "dismissed")}>Hide</Button>
+                    <UIButton size="sm" variant={j.match?.status === "saved" ? "secondary" : "outline"} className="bg-transparent" onClick={() => setStatus(j, "saved")}>
+                      {j.match?.status === "saved" ? <BookmarkCheck /> : <Bookmark />}
+                      {j.match?.status === "saved" ? "Saved" : "Save"}
+                    </UIButton>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <UIButton size="icon-sm" variant="ghost" aria-label={`More actions for ${j.title}`}>
+                          <Ellipsis />
+                        </UIButton>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onSelect={() => setStatus(j, "applied")}>
+                          <CircleCheck /> I applied
+                        </DropdownMenuItem>
+                        <DropdownMenuItem asChild>
+                          <a href={j.url} target="_blank" rel="noreferrer">
+                            <ExternalLink /> Open posting
+                          </a>
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onSelect={() => setStatus(j, "dismissed")}>
+                          <EyeOff /> Hide
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </>
                 }
               />
             ))}
           </div>
         ) : (
-          <Empty title="No jobs match these filters" body="Try a lower score, or run discovery from the dashboard." />
+          <Empty icon={<Search className="size-4" />} title="No jobs match these filters" body="Try a lower score, or run discovery from the dashboard." />
         )}
       </Card>
+
+      <Dialog open={panel === "add"} onOpenChange={(o) => setPanel(o ? "add" : "none")}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add a job you found</DialogTitle>
+            <DialogDescription>From LinkedIn, Wellfound, a referral… We&apos;ll score it and track it.</DialogDescription>
+          </DialogHeader>
+          <form onSubmit={addJob} className="grid gap-3 sm:grid-cols-2">
+            <Input label="Job title" required value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
+            <Input label="Company" required value={form.company} onChange={(e) => setForm({ ...form, company: e.target.value })} />
+            <Input label="Link" type="url" required value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })} />
+            <Input label="Location" value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} />
+            <div className="sm:col-span-2">
+              <Textarea label="Description" rows={4} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+            </div>
+            {err && (
+              <div className="sm:col-span-2">
+                <ErrorNote>{err}</ErrorNote>
+              </div>
+            )}
+            <DialogFooter className="sm:col-span-2">
+              <Button type="submit" loading={busy}>
+                Add job
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={panel === "track"} onOpenChange={(o) => setPanel(o ? "track" : "none")}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Track a company&apos;s careers page</DialogTitle>
+            <DialogDescription>Greenhouse, Lever, Ashby and Workable boards are pulled automatically on every discovery run.</DialogDescription>
+          </DialogHeader>
+          <form onSubmit={track} className="grid gap-3">
+            <Input label="Careers page URL" type="url" required placeholder="https://jobs.ashbyhq.com/company" value={careers.url} onChange={(e) => setCareers({ ...careers, url: e.target.value })} />
+            <Input label="Company name" value={careers.companyName} onChange={(e) => setCareers({ ...careers, companyName: e.target.value })} />
+            {err && <ErrorNote>{err}</ErrorNote>}
+            <DialogFooter>
+              <Button type="submit" loading={busy}>
+                Track
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

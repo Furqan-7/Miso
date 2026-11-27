@@ -9,14 +9,14 @@ async function shot(page: Page, name: string) {
 async function loginDemo(page: Page) {
   await page.goto("/auth/signin");
   await page.getByLabel("Email").fill("demo@jobpilot.dev");
-  await page.getByLabel("Password").fill("demo12345");
+  await page.getByLabel("Password", { exact: true }).fill("demo12345");
   await page.getByRole("button", { name: "Sign in" }).click();
   await page.waitForURL("**/dashboard");
 }
 
 test("landing page explains the product", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: /Email the people who hire/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /on autopilot/ })).toBeVisible();
   await shot(page, "01-landing");
 });
 
@@ -25,7 +25,7 @@ test("new user onboards from resume text to a scored feed", async ({ page }) => 
   await page.goto("/auth/signup");
   await page.getByLabel("Full name").fill("Kiran Rao");
   await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Password").fill("supersecret1");
+  await page.getByLabel("Password", { exact: true }).fill("supersecret1");
   await page.getByRole("button", { name: "Create account" }).click();
   await page.waitForURL("**/onboarding");
 
@@ -45,7 +45,7 @@ test("new user onboards from resume text to a scored feed", async ({ page }) => 
   await shot(page, "03-onboarding-prefs");
   await page.getByRole("button", { name: "Continue" }).click(); // → voice
   await page.getByRole("button", { name: "Finish and see my matches" }).click();
-  await page.waitForURL("**/dashboard");
+  await page.waitForURL("**/dashboard?tab=matches");
   await expect(page.getByRole("heading", { name: /Good to see you, Kiran/ })).toBeVisible();
   await expect(page.getByText("Frontend Engineering Intern").first()).toBeVisible();
   await shot(page, "04-dashboard-new-user");
@@ -54,7 +54,7 @@ test("new user onboards from resume text to a scored feed", async ({ page }) => 
 test("demo user drafts, edits and sends an email from a job", async ({ page }) => {
   await loginDemo(page);
   await shot(page, "05-dashboard");
-  await page.getByRole("link", { name: "Jobs", exact: true }).click();
+  await page.getByRole("link", { name: "Jobs", exact: true }).first().click();
   await expect(page.getByRole("heading", { name: "Jobs" })).toBeVisible();
   await shot(page, "06-jobs");
   await page.getByRole("link", { name: "Full-stack Engineer" }).first().click();
@@ -71,7 +71,7 @@ test("demo user drafts, edits and sends an email from a job", async ({ page }) =
   await page.getByRole("button", { name: "Send now" }).click();
   await expect(page.getByText("Queued to send now")).toBeVisible();
 
-  await page.getByRole("link", { name: "Outreach" }).click();
+  await page.getByRole("link", { name: "Outreach" }).first().click();
   await page.getByRole("tab", { name: /Scheduled|Sent/ }).first().click();
   await shot(page, "09-outreach");
 });
@@ -90,7 +90,7 @@ test("company research card, tracker, inbox, analytics, deliverability, settings
   await expect(page.getByText(/\/ 300/)).toBeVisible();
 
   await page.goto("/tracker");
-  await expect(page.getByRole("region", { name: "Emailed" }).or(page.getByLabel("Emailed"))).toBeVisible();
+  await expect(page.getByRole("region", { name: "Emailed" })).toBeVisible();
   await shot(page, "11-tracker");
 
   for (const [path, heading, name] of [
@@ -130,9 +130,10 @@ test("tracker: moving a card to Interview builds the prep pack", async ({ page }
   const created = await page.request.post("/backend/crm/applications", { data: { company, roleTitle: "Frontend Intern", stage: "found" } });
   expect(created.status()).toBe(201);
   await page.goto("/tracker");
-  const mover = page.getByRole("combobox", { name: `Move ${company}` });
-  await expect(mover).toBeVisible();
-  await mover.selectOption("interview");
+  // Card menu → Move to → Interview (shadcn DropdownMenu submenu)
+  await page.getByRole("button", { name: `Actions for ${company}` }).click();
+  await page.getByRole("menuitem", { name: "Move to" }).click();
+  await page.getByRole("menuitemradio", { name: "Interview" }).click();
   await expect(page.getByText("Interview prep pack is ready")).toBeVisible();
   await page.getByRole("region", { name: "Interview" }).getByRole("link", { name: new RegExp(company) }).click();
   await page.getByRole("tab", { name: "Interview prep" }).click();
@@ -145,7 +146,7 @@ test("free plan: campaign builder explains bulk campaigns need Pro", async ({ pa
   await loginDemo(page);
   await page.goto("/campaigns/new");
   await expect(page.getByText(/Bulk campaigns are a Pro feature/)).toBeVisible();
-  await expect(page.getByRole("option", { name: /Autopilot.*\(Pro\)/ })).toBeDisabled();
+  await expect(page.getByRole("radio", { name: "Autopilot" })).toBeDisabled();
 });
 
 test("deliverability: run SPF/DKIM/DMARC checks", async ({ page }) => {

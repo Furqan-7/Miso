@@ -12,6 +12,8 @@ export interface User {
   sendingPaused: boolean;
   onboardedAt: string | null;
   notificationPrefs: { push: boolean; whatsapp: boolean; email: boolean };
+  weeklyGoal: number;
+  createdAt: string;
 }
 
 export interface Profile {
@@ -208,4 +210,33 @@ export interface RateRow {
   positive: number;
   openRate: number;
   replyRate: number;
+}
+
+export interface DashboardActivity {
+  id: string;
+  type: string;
+  payload: Record<string, unknown>;
+  createdAt: string;
+  applicationId: string;
+  roleTitle: string | null;
+  companyId: string;
+  company: string;
+  contact: string | null;
+}
+
+export interface DashboardData {
+  days: number;
+  overview: {
+    sent: { value: number; previous: number };
+    replies: { value: number; previous: number; needAction: number };
+    matches: { value: number; today: number };
+  };
+  workload: { stage: string; count: number; companies: string[]; updatedAt: string | null }[];
+  activeApplications: number;
+  capacity: { limit: number; sent: number; scheduled: number; free: number; mailboxes: number; resetsInHours: number; paused: boolean };
+  performance: { overallReplyRate: number; companySize: RateRow[]; contactRole: RateRow[]; tone: RateRow[]; step: RateRow[] };
+  activity: DashboardActivity[];
+  upcoming: { id: string; kind: "interview" | "reminder" | "send"; title: string; at: string | null; applicationId: string | null }[];
+  weekly: { goal: number; sent: number };
+  recap: { sent: number; replies: number; positive: number; interviews: number; insight: string | null };
 }

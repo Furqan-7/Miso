@@ -1,23 +1,75 @@
+import { PLAN_LIMITS } from "shared";
+import { Check } from "lucide-react";
+import Link from "next/link";
+import { cn } from "@/app/lib/utils";
+import { buttonVariants } from "../ui/button";
+import { SectionHeading, Stagger, StaggerItem } from "./motion";
+
+const free = PLAN_LIMITS.free;
+const pro = PLAN_LIMITS.pro;
+const college = PLAN_LIMITS.college;
+
+const TIERS = [
+  {
+    name: "Free",
+    price: "$0",
+    note: "forever",
+    blurb: "For trying it on a handful of companies.",
+    cta: "Start free",
+    items: [`${free.dailySends} sends a day`, `${free.monthlyAiDrafts} AI drafts a month`, "Approval mode", `${free.mailboxes} mailbox`, "Daily job feed + scoring"],
+  },
+  {
+    name: "Pro",
+    price: `$${pro.priceMonthlyUsd}`,
+    note: "per month",
+    blurb: "For a serious, steady search.",
+    cta: "Go Pro",
+    featured: true,
+    items: [`${pro.dailySends} sends a day`, "Autopilot + bulk campaigns", "A/B subject tests", `${pro.mailboxes} mailboxes`, "WhatsApp reply alerts"],
+  },
+  {
+    name: "College",
+    price: "Per seat",
+    note: "for placement cells",
+    blurb: "One admin, every student's pipeline.",
+    cta: "Set up your college",
+    items: ["Pro features for each student", "Invite codes", "Alumni referral finder", "Placement dashboard", `Up to ${college.seats} seats`],
+  },
+];
+
 export function Pricing() {
   return (
-    <section className="mx-auto max-w-6xl px-4 pb-24 md:px-8">
-            <div className="grid gap-4 md:grid-cols-3">
-              {[
-                { name: "Free", price: "$0", items: ["15 sends / day", "40 AI drafts / month", "Approval mode", "1 mailbox"] },
-                { name: "Pro", price: "$12/mo", items: ["80 sends / day", "Autopilot + bulk campaigns", "A/B subject tests", "3 mailboxes, WhatsApp alerts"] },
-                { name: "College", price: "Per seat", items: ["Placement-cell dashboard", "Invite codes for students", "Alumni referral finder", "Pro features for every student"] },
-              ].map((p) => (
-                <div key={p.name} className="rounded-[var(--radius-card)] border border-border bg-surface p-6">
-                  <p className="text-sm font-medium text-ink-3">{p.name}</p>
-                  <p className="mt-1 text-3xl font-semibold">{p.price}</p>
-                  <ul className="mt-4 space-y-2 text-sm text-ink-2">
-                    {p.items.map((i) => (
-                      <li key={i}>✓ {i}</li>
-                    ))}
-                  </ul>
-                </div>
+    <section id="pricing" className="mx-auto max-w-6xl scroll-mt-24 px-6 py-28">
+      <SectionHeading eyebrow="Pricing" title="Start free. Upgrade when it works." body="Every plan sends from your own inbox and protects it with the same safety limits." />
+      <Stagger className="mt-14 grid gap-4 md:grid-cols-3">
+        {TIERS.map((t) => (
+          <StaggerItem
+            key={t.name}
+            className={cn(
+              "relative flex flex-col rounded-2xl border bg-card p-6",
+              t.featured && "border-transparent [background:linear-gradient(var(--card),var(--card))_padding-box,linear-gradient(160deg,rgba(76,141,255,0.7),rgba(164,139,255,0.35)_40%,var(--border)_70%)_border-box]",
+            )}
+          >
+            {t.featured && <span className="absolute right-5 top-5 rounded-full bg-brand/15 px-2 py-0.5 text-[11px] font-medium text-brand">Most popular</span>}
+            <p className="text-[13px] font-medium text-secondary-foreground">{t.name}</p>
+            <p className="mt-4 flex items-baseline gap-1.5">
+              <span className="display text-[40px] text-foreground">{t.price}</span>
+              <span className="text-[13px] text-muted-foreground">{t.note}</span>
+            </p>
+            <p className="mt-2 text-[13px] text-muted-foreground">{t.blurb}</p>
+            <ul className="mt-6 flex-1 space-y-2.5">
+              {t.items.map((i) => (
+                <li key={i} className="flex items-center gap-2.5 text-[13px] text-secondary-foreground">
+                  <Check className="size-3.5 text-foreground" /> {i}
+                </li>
               ))}
-            </div>
-          </section>
+            </ul>
+            <Link href="/auth/signup" className={cn(buttonVariants({ variant: t.featured ? "default" : "outline", size: "lg" }), "mt-8 w-full rounded-full")}>
+              {t.cta}
+            </Link>
+          </StaggerItem>
+        ))}
+      </Stagger>
+    </section>
   );
 }
